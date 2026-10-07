@@ -16,6 +16,28 @@ import pandas as pd
 SOURCE_DIR = Path(str(Path(__file__).resolve().parent / "data/source"))
 OUTPUT_DIR = Path(str(SOURCE_DIR.parent / "processed"))
 CACHE_DIR = Path(str(SOURCE_DIR / ".cache"))
+OUTPUT_COLUMNS = {'macro_year': ['year', 'inflation_to_2024', 'mortgage_rate_30yr'],
+ 'county_year': ['county_fips',
+                 'year',
+                 'household_population',
+                 'housing_units',
+                 'occupied_housing_units',
+                 'owner_households',
+                 'renter_households',
+                 'one_unit_units',
+                 'two_unit_units',
+                 'three_four_unit_units',
+                 'five_plus_unit_units',
+                 'units_authorized_total'],
+ 'zhvi_county_year': ['county_fips', 'tier', 'year', 'home_value_2024'],
+ 'rent_county_month': ['county_fips', 'date', 'asking_rent_nominal'],
+ 'county_industry_year': ['county_fips',
+                          'year',
+                          'ownership',
+                          'sector',
+                          'is_total',
+                          'employment',
+                          'total_wages_2024']}
 YEARS = range(2007, 2025)
 BAY_COUNTY_FIPS = {
     "Alameda": "06001",
@@ -32,7 +54,6 @@ STOCK = {
     "household_population": "B25008_001E",
     "housing_units": "B25001_001E",
     "occupied_housing_units": "B25002_002E",
-    "vacant_housing_units": "B25002_003E",
     "owner_households": "B25003_002E",
     "renter_households": "B25003_003E",
 }
@@ -44,7 +65,6 @@ QCEW_TYPE_RENAMES = {
     "total_wages_in_thousands": "total_wages_thousands",
     "average_annual_pay": "average_annual_pay",
 }
-STOCK.update({f"{k}_moe90": v[:-1] + "M" for k, v in list(STOCK.items())})
 SESSION = requests.Session()
 load_dotenv(SOURCE_DIR.parent.parent / ".env")
 MARKET_CACHE_DIR = CACHE_DIR / "market"
@@ -139,22 +159,6 @@ def build_mortgage_rates():
     return rates.loc[rates.year.isin(YEARS)].sort_values("date")
 
 
-def build_hpi_county():
-    hpi = pd.read_csv(SOURCE_DIR / "hpi_at_county.csv")
-    hpi["county"] = hpi["County"].str.replace(" County", "", regex=False)
-    hpi["year"] = pd.to_numeric(hpi["Year"], errors="coerce")
-    hpi = hpi.loc[hpi["State"].eq("CA") & hpi["county"].isin(BAY_COUNTIES)].copy()
-    hpi["county_fips"] = hpi["county"].map(BAY_COUNTY_FIPS)
-    hpi["hpi"] = pd.to_numeric(hpi["HPI with 2000 base"], errors="coerce").where(
-        lambda x: x.gt(0)
-    )
-    hpi["hpi_nominal"] = hpi["hpi"]
-    hpi["source"] = "FHFA_county_HPI"
-    return hpi[["county_fips", "year", "hpi", "hpi_nominal", "source"]].sort_values(
-        ["county_fips", "year"]
-    )
-
-
 def build_acs_county_stock():
     frames = []
     for year in YEARS:
@@ -170,47 +174,6 @@ def build_acs_county_stock():
         frame["year"], frame["acs_product"] = (year, "acs1")
         frames.append(frame[["county_fips", "year", "acs_product", *STOCK]])
     return pd.concat(frames, ignore_index=True)
-
-
-def build_boe():
-    keys = ["Assessment Year From", "Assessment Year To", "County"]
-    tables = []
-    for path in sorted(SOURCE_DIR.glob("PropTax*.csv")):
-        table = pd.read_csv(path)
-        table["County"] = table["County"].str.strip().str.removesuffix(" County")
-        table = table.loc[table.County.isin(BAY_COUNTIES)].copy()
-        table["available_" + path.stem] = True
-        tables.append(table)
-    if not tables:
-        raise FileNotFoundError("No PropTax CSV tables in SOURCE_DIR")
-    result = tables[0]
-    for table in tables[1:]:
-        result = result.merge(table, on=keys, how="outer", validate="one_to_one")
-    result = result.rename(
-        columns={column: normalize_name(column) for column in result}
-    )
-    result = result.rename(columns={"multi_family_transfers": "multifamily_transfers"})
-    result["county_fips"] = result.county.map(BAY_COUNTY_FIPS)
-    for column in [c for c in result if c.startswith("available_")]:
-        result[column] = result[column].astype("boolean").fillna(False).astype(bool)
-    start = result.assessment_year_from.astype(int)
-    result["workload_period_start"] = pd.to_datetime((start - 1).astype(str) + "-07-01")
-    result["workload_period_end"] = pd.to_datetime(start.astype(str) + "-06-30")
-    result["assessment_period_start"] = pd.to_datetime(start.astype(str) + "-07-01")
-    result["assessment_period_end"] = pd.to_datetime(
-        result.assessment_year_to.astype(int).astype(str) + "-06-30"
-    )
-    result["assessment_lien_date"] = pd.to_datetime(start.astype(str) + "-01-01")
-    result["period_start"] = result.workload_period_start
-    result["period_end"] = result.workload_period_end
-    result["reference_period"] = (
-        "Table_F_prior_fiscal_year; values_and_parcels_assessment_roll"
-    )
-    result["source"] = "BOE_PropTax_tables"
-    result["transfer_measure"] = (
-        "assessor_change_in_ownership_workload_not_market_sales"
-    )
-    return result.sort_values(["county_fips", "assessment_year_from"])
 
 
 def build_rent():
@@ -264,7 +227,6 @@ def build_county_year():
     ).to_frame(index=False)
     for frame in [
         build_acs_county_stock(),
-        build_hpi_county().drop(columns="source"),
         build_bps_county().drop(columns=["county", "source"]),
     ]:
         county = county.merge(
@@ -401,6 +363,7 @@ def build_qcew_panel():
     parsed["county_fips"] = parsed["county"].map(BAY_COUNTY_FIPS)
     parsed["type"] = parsed["type"].map(normalize_name).replace(QCEW_TYPE_RENAMES)
     keys = ["county_fips", "county", "year", "owner", "industry"]
+    parsed = parsed.loc[parsed["type"].isin(["employment", "total_wages_thousands"]) & parsed.year.isin(YEARS)]
     panel = parsed.pivot(index=keys, columns="type", values="value").reset_index()
     panel.columns.name = None
     panel["total_wages"] = panel["total_wages_thousands"] * 1000
@@ -416,37 +379,8 @@ def build_qcew():
     result["is_total"] = result["sector"].eq("total_all_industries")
     result["source"] = "BLS_QCEW_publication_series_PDF"
     result["total_wages_2024"] = result["total_wages"] * result["inflation_to_2024"]
-    result["average_annual_pay_2024"] = (
-        result["average_annual_pay"] * result["inflation_to_2024"]
-    )
-    keys = ["county_fips", "year", "ownership"]
-    totals = result.loc[
-        result["is_total"], keys + ["employment", "total_wages"]
-    ].rename(
-        columns={"employment": "ownership_employment", "total_wages": "ownership_wages"}
-    )
-    result = result.merge(totals, on=keys, how="left", validate="many_to_one")
-    result["employment_share"] = (
-        result["employment"] / result["ownership_employment"]
-    ).where(~result["is_total"])
-    result["payroll_share"] = (result["total_wages"] / result["ownership_wages"]).where(
-        ~result["is_total"]
-    )
-    sectors = (
-        result.loc[~result["is_total"]]
-        .groupby(keys)[["employment", "total_wages"]]
-        .sum(min_count=1)
-        .add_prefix("reported_sector_")
-        .reset_index()
-    )
-    result = result.merge(sectors, on=keys, how="left", validate="many_to_one")
-    result["unallocated_employment"] = (
-        result["ownership_employment"] - result["reported_sector_employment"]
-    )
-    result["unallocated_wages"] = (
-        result["ownership_wages"] - result["reported_sector_total_wages"]
-    )
-    return result.sort_values(["county_fips", "year", "ownership", "sector"])
+    columns = ["county_fips", "year", "ownership", "sector", "is_total", "employment", "total_wages_2024"]
+    return result.loc[result.year.isin(YEARS) & result.ownership.eq("private"), columns].sort_values(["county_fips", "year", "ownership", "sector"])
 
 
 def bps_column_names(text, metadata_columns):
@@ -498,10 +432,6 @@ def standardize_bps_units(frame):
         "five_plus_unit_units",
     ]:
         frame[column] = pd.to_numeric(frame.get(column), errors="coerce")
-    frame["single_family_units_authorized"] = frame["one_unit_units"]
-    frame["multifamily_units_authorized"] = frame[
-        ["two_unit_units", "three_four_unit_units", "five_plus_unit_units"]
-    ].sum(axis=1, min_count=3)
     frame["units_authorized_total"] = frame[
         [
             "one_unit_units",
@@ -545,9 +475,7 @@ def build_bps_county():
         frame["county"] = frame["county_fips"].map(FIPS_TO_BAY_COUNTY)
         frame["year"] = year
         frame = standardize_bps_units(frame)
-        permit_columns = [
-            c for c in frame if c.endswith(("_bldgs", "_units", "_value"))
-        ]
+        permit_columns = ["one_unit_units", "two_unit_units", "three_four_unit_units", "five_plus_unit_units"]
         frame[permit_columns] = frame[permit_columns].apply(pd.to_numeric)
         frame["source"] = "Census_BPS_annual_county"
         frames.append(
@@ -557,8 +485,6 @@ def build_bps_county():
                     "county",
                     "year",
                     *permit_columns,
-                    "single_family_units_authorized",
-                    "multifamily_units_authorized",
                     "units_authorized_total",
                     "source",
                 ]
@@ -574,7 +500,17 @@ def census_get(year, geography, vars_dict):
         json.dumps({"year": year, "query": query}, sort_keys=True).encode()
     ).hexdigest()[:16]
     cache_path = CACHE_DIR / "census/county" / f"stock_{year}_{digest}.json"
-    payload = census_json(url, query, cache_path)
+    if not cache_path.exists():
+        required = {"NAME", "state", "county", *vars_dict.values()}
+        for candidate in sorted(cache_path.parent.glob(f"stock_{year}_*.json")):
+            cached = json.loads(candidate.read_text())
+            if cached and required.issubset(cached[0]):
+                payload = cached
+                break
+        else:
+            payload = census_json(url, query, cache_path)
+    else:
+        payload = census_json(url, query, cache_path)
     frame = pd.DataFrame(payload[1:], columns=payload[0]).rename(
         columns={value: key for key, value in vars_dict.items()}
     )
@@ -619,125 +555,12 @@ def build_zhvi_annual():
     return d
 
 
-def build_loan_limits():
-    parts = []
-    for path in sorted(SOURCE_DIR.glob("fullcountyloanlimitlist*")):
-        year = int(re.search("(20\\d{2})", path.name).group(1))
-        if path.suffix == ".csv":
-            d = pd.read_csv(path)
-        else:
-            raw = pd.read_excel(path, header=None)
-            rows = raw.index[
-                raw.apply(
-                    lambda row: row.astype(str)
-                    .str.contains("FIPS State Code", regex=False)
-                    .any(),
-                    axis=1,
-                )
-            ]
-            header = rows[0]
-            d = raw.iloc[header + 1 :].copy()
-            d.columns = raw.iloc[header].tolist()
-        d.columns = [normalize_name(c) for c in d.columns]
-        d["county_fips"] = pd.to_numeric(d.fips_state_code, errors="coerce").astype(
-            "Int64"
-        ).astype("string").str.zfill(2) + pd.to_numeric(
-            d.fips_county_code, errors="coerce"
-        ).astype(
-            "Int64"
-        ).astype(
-            "string"
-        ).str.zfill(
-            3
-        )
-        d = d.loc[d.county_fips.isin(BAY_COUNTY_FIPS.values())].copy()
-        for units, col in enumerate(
-            ["one_unit_limit", "two_unit_limit", "three_unit_limit", "four_unit_limit"],
-            1,
-        ):
-            part = d[["county_fips", col]].rename(columns={col: "loan_limit_nominal"})
-            part["loan_limit_nominal"] = pd.to_numeric(
-                part.loan_limit_nominal.astype(str).str.replace("[$,]", "", regex=True),
-                errors="raise",
-            )
-            part["year"] = year
-            part["units"] = units
-            part["source_file"] = path.name
-            part["annual_comparable"] = year >= 2012
-            part["schedule_note"] = (
-                "full_year_modern_originations"
-                if year >= 2012
-                else "source_acquisition_and_origination_date_restrictions"
-            )
-            parts.append(part)
-    d = pd.concat(parts, ignore_index=True)
-    return d
-
-
-def build_metro_context():
-    variables = {
-        "population": "B01003_001E",
-        "median_household_income": "B19013_001E",
-        "housing_units": "B25001_001E",
-    }
-    geo = "metropolitan statistical area/micropolitan statistical area"
-    frames = []
-    for year in YEARS:
-        if year == 2020:
-            continue
-        frame = census_get(year, {"for": geo + ":*"}, variables)
-        frame = frame.loc[frame.NAME.str.contains("Metro Area", regex=False)].copy()
-        frame = frame.rename(columns={geo: "cbsa_code", "NAME": "msa"})
-        frame["year"] = year
-        for column in variables:
-            frame[column] = frame[column].where(frame[column].ge(0))
-        frames.append(frame)
-    all_metros = pd.concat(frames, ignore_index=True)
-    all_metros["published_cbsa_code"] = all_metros.cbsa_code
-    all_metros["cbsa_code"] = all_metros.cbsa_code.replace({"31100": "31080"})
-    bay_codes = {"41860", "41940", "42220", "46700", "34900"}
-    baseline = all_metros.loc[all_metros.year.eq(min(YEARS))]
-    largest = set(baseline.nlargest(25, "population").cbsa_code)
-    selected = largest | bay_codes
-    result = all_metros.loc[all_metros.cbsa_code.isin(selected)].copy()
-    names = (
-        result.sort_values("year")
-        .drop_duplicates("cbsa_code", keep="last")
-        .set_index("cbsa_code")
-        .msa
-    )
-    index = pd.MultiIndex.from_product(
-        [sorted(selected), list(YEARS)], names=["cbsa_code", "year"]
-    )
-    result = result.set_index(["cbsa_code", "year"]).reindex(index).reset_index()
-    result["published_name"] = result.msa
-    result["msa"] = result.cbsa_code.map(names)
-    result["bay_msa"] = result.cbsa_code.isin(bay_codes)
-    result["comparison_selection"] = "25_largest_2007_population_plus_five_Bay_MSAs"
-    result["geography_type"] = "metropolitan_statistical_area"
-    result["acs_product"] = np.where(result.year.eq(2020), "unavailable_2020", "ACS1")
-    result = result.merge(
-        load_cpi()[["year", "inflation_to_2024"]], on="year", validate="many_to_one"
-    )
-    result["median_household_income_2024"] = (
-        result.median_household_income * result.inflation_to_2024
-    )
-    result["source"] = "Census_ACS1_published_annual_MSA_boundaries"
-    return result.sort_values(["cbsa_code", "year"])
-
-
 def main():
     for name, build in [
         ("macro_year", build_macro_year),
-        ("metro_context_year", build_metro_context),
-        ("zhvi_county_month", build_zhvi),
         ("zhvi_county_year", build_zhvi_annual),
-        ("loan_limits_county_year", build_loan_limits),
-        ("mortgage_rates_weekly", build_mortgage_rates),
         ("county_year", build_county_year),
-        ("hpi_county_year", build_hpi_county),
         ("county_industry_year", build_qcew),
-        ("boe_county_period", build_boe),
         ("rent_county_month", build_rent),
     ]:
         frame = build()
@@ -748,7 +571,7 @@ def main():
                 )
             print("ZORI source absent; monthly rent is unavailable")
             continue
-        write_parquet(frame, name + ".parquet")
+        write_parquet(frame[OUTPUT_COLUMNS[name]], name + ".parquet")
         print(f"Wrote {name}: {len(frame):,} rows")
 
 
