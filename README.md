@@ -55,12 +55,12 @@ As buying became more difficult, financed home purchases became increasingly con
 
 That shift can be misleading if it is viewed only as a change in shares. The number of purchases fell in every income group between 2007 and 2024. Even purchases by borrowers earning more than $300,000 declined. They simply fell much less than purchases by everyone else.
 
-|      | income_band |  2007 |  2024 | change_2007_2024 |
-| ---: | :---------- | ----: | ----: | ---------------: |
-|    0 | <100k       |  3438 |  2527 |         -0.26498 |
-|    1 | 100-200k    | 20965 | 13390 |        -0.361316 |
-|    2 | 200-300k    | 18750 | 10309 |        -0.450187 |
-|    3 | 300k+       | 21544 | 18705 |        -0.131777 |
+| income_band |  2007 |  2024 | change_2007_2024 |
+| :---------- | ----: | ----: | ---------------: |
+| <100k       |  3438 |  2527 |         -0.26498 |
+| 100-200k    | 20965 | 13390 |        -0.361316 |
+| 200-300k    | 18750 | 10309 |        -0.450187 |
+| 300k+       | 21544 | 18705 |        -0.131777 |
 
 The change in who was buying therefore came partly from households lower down the income distribution dropping out of the market. The pool of buyers did not just become richer because more very high-income households entered it, but because purchasing activity contracted much more sharply among households below them.
 
@@ -72,12 +72,12 @@ The composition of homeowners changed alongside the decline in access. Homeowner
 
 Some of that change is simply demographic. The Bay Area population itself became older, and much of the increase in the share of older homeowners reflects that shift rather than a sudden increase in the likelihood that older households own homes. But age alone does not explain everything. Homeownership rates also declined among younger adults, particularly those under 50.
 
-|      | age_group |   2007 |   2024 | change_2007_2024 |
-| ---: | :-------- | -----: | -----: | ---------------: |
-|    0 | 18-34     | 126317 | 103176 |           -23141 |
-|    1 | 35-49     | 515996 | 419650 |           -96346 |
-|    2 | 50-64     | 508353 | 507470 |             -883 |
-|    3 | 65+       | 340532 | 567141 |           226609 |
+| age_group |   2007 |   2024 | change_2007_2024 |
+| :-------- | -----: | -----: | ---------------: |
+| 18-34     | 126317 | 103176 |           -23141 |
+| 35-49     | 515996 | 419650 |           -96346 |
+| 50-64     | 508353 | 507470 |             -883 |
+| 65+       | 340532 | 567141 |           226609 |
 
 | age_group |     2007 |     2012 |     2019 |     2024 |
 | :-------- | -------: | -------: | -------: | -------: |
@@ -137,16 +137,16 @@ It would be easy to assume that population decline should reduce pressure on the
 
 People entering the Bay Area from elsewhere in the country were consistently younger and less likely to live in owner-occupied housing than those leaving. Earlier in the period, entrants and exits also differed more clearly in income. By 2024, however, their average personal incomes were nearly identical while the gap in homeownership remained large.
 
-|      | YEAR | continuity_group | persons |     AGE | personal_income_2024 | share_in_owner_occupied_home |
-| ---: | ---: | :--------------- | ------: | ------: | -------------------: | ---------------------------: |
-|    6 | 2007 | entrant_domestic |  144306 | 35.2999 |              60492.3 |                      0.31217 |
-|    7 | 2007 | exit_domestic    |  159141 | 38.1612 |              58444.6 |                      0.42238 |
-|   31 | 2012 | entrant_domestic |  156785 | 34.8107 |              63916.4 |                     0.267334 |
-|   32 | 2012 | exit_domestic    |  139893 | 37.5481 |              49616.2 |                     0.275496 |
-|   73 | 2019 | entrant_domestic |  159506 | 36.4979 |              87524.6 |                     0.269526 |
-|   74 | 2019 | exit_domestic    |  211487 | 39.7507 |                76166 |                     0.425118 |
-|  103 | 2024 | entrant_domestic |  139682 | 35.4337 |              76908.7 |                     0.290703 |
-|  104 | 2024 | exit_domestic    |  198253 |   39.09 |                75851 |                     0.428251 |
+| YEAR | continuity_group | persons |     AGE | personal_income_2024 | share_in_owner_occupied_home |
+| ---: | :--------------- | ------: | ------: | -------------------: | ---------------------------: |
+| 2007 | entrant_domestic |  144306 | 35.2999 |              60492.3 |                      0.31217 |
+| 2007 | exit_domestic    |  159141 | 38.1612 |              58444.6 |                      0.42238 |
+| 2012 | entrant_domestic |  156785 | 34.8107 |              63916.4 |                     0.267334 |
+| 2012 | exit_domestic    |  139893 | 37.5481 |              49616.2 |                     0.275496 |
+| 2019 | entrant_domestic |  159506 | 36.4979 |              87524.6 |                     0.269526 |
+| 2019 | exit_domestic    |  211487 | 39.7507 |                76166 |                     0.425118 |
+| 2024 | entrant_domestic |  139682 | 35.4337 |              76908.7 |                     0.290703 |
+| 2024 | exit_domestic    |  198253 |   39.09 |                75851 |                     0.428251 |
 
 So the region was not simply losing lower-income households while attracting richer replacements. By the end of the period, migration was separating households more clearly by age and housing position than by income alone.
 
